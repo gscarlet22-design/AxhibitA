@@ -13,6 +13,7 @@ export interface ViewInput {
   view: ViewState
   calib: Calibration | null
   boxes: { box: Box; style: RedactStyle }[]
+  redactOutside?: RedactStyle | null
 }
 
 /** Sub-viewports for the quad view (2×2 with a 2px gutter). */
@@ -30,7 +31,7 @@ export function quadViewports(vp: Viewport): Viewport[] {
 
 export function drawView(r: GLRenderer, i: ViewInput, vp: Viewport): void {
   const calib = i.calib ?? defaultCalibration(i.srcW, i.srcH)
-  const base = { srcW: i.srcW, srcH: i.srcH, srcRect: i.srcRect, boxes: i.boxes, calib }
+  const base = { srcW: i.srcW, srcH: i.srcH, srcRect: i.srcRect, boxes: i.boxes, redactOutside: i.redactOutside, calib }
   switch (i.view.mode) {
     case 'normal': {
       const m = normalMapping(i.srcW, i.srcH, vp, i.view.normal)
@@ -56,7 +57,7 @@ export function drawView(r: GLRenderer, i: ViewInput, vp: Viewport): void {
 
 /** Draw an export frame for any ExportView at media time t. */
 export function drawExportView(r: GLRenderer, ev: ExportView, i: Omit<ViewInput, 'view' | 'calib'>, t: number, vp: Viewport): void {
-  const base = { srcW: i.srcW, srcH: i.srcH, srcRect: i.srcRect, boxes: i.boxes }
+  const base = { srcW: i.srcW, srcH: i.srcH, srcRect: i.srcRect, boxes: i.boxes, redactOutside: i.redactOutside }
   if (ev.kind === 'original') {
     r.draw({ ...base, mode: 'normal', normCenter: { x: i.srcW / 2, y: i.srcH / 2 }, normScale: Math.min(vp.w / i.srcW, vp.h / i.srcH) }, vp)
   } else if (ev.kind === 'crop') {

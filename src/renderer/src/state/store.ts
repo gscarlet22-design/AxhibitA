@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import { defaultViewState } from '@shared/dewarp/views'
 import type { AppInfo, Settings } from '@shared/ipc'
-import type { Calibration, Keyframe, Mount, PtzState, Recording, RedactionTrack, SignedVideoResult, ViewState, ZoomPath } from '@shared/types'
+import type { Calibration, Keyframe, Mount, PtzState, Recording, RedactionTrack, RedactOutside, SignedVideoResult, ViewState, ZoomPath } from '@shared/types'
 
 export interface PerRecording {
   view: ViewState
   fisheye: boolean
   redactions: RedactionTrack[]
+  /** null: boxes are hidden; a style: everything outside the boxes is hidden with it */
+  redactOutside: RedactOutside
   viewPath: Keyframe<PtzState>[]
   followPath: boolean
   /** digital zoom path on the raw frame (any camera) */
@@ -113,6 +115,7 @@ export function newPer(r: Recording): PerRecording {
     view: defaultViewState(mount),
     fisheye: !!r.axis?.isFisheye,
     redactions: [],
+    redactOutside: null,
     viewPath: [],
     followPath: true,
     zoomPath: null,

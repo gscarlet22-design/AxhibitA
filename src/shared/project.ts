@@ -1,11 +1,13 @@
 /** Saved-project entries (per recording): what gets written and how older files are read back. */
-import type { Keyframe, PtzState, RedactionTrack, ZoomPath } from './types'
+import type { Keyframe, PtzState, RedactionTrack, RedactOutside, ZoomPath } from './types'
 
 export interface ProjectEntry {
   redactions: RedactionTrack[]
   viewPath: Keyframe<PtzState>[]
   /** added in 1.1; absent in older projects */
   zoomPath?: ZoomPath
+  /** added in 1.1; absent = boxes are hidden */
+  redactOutside?: RedactOutside
   inSec?: number
   outSec?: number
 }
@@ -14,6 +16,7 @@ export interface EditableState {
   redactions: RedactionTrack[]
   viewPath: Keyframe<PtzState>[]
   zoomPath: ZoomPath | null
+  redactOutside: RedactOutside
   inSec: number | null
   outSec: number | null
 }
@@ -22,7 +25,7 @@ export interface EditableState {
 export function entryFromState(p: EditableState): ProjectEntry | null {
   const zoom = p.zoomPath && p.zoomPath.keyframes.length ? p.zoomPath : undefined
   if (!p.redactions.length && !p.viewPath.length && !zoom && p.inSec === null && p.outSec === null) return null
-  return { redactions: p.redactions, viewPath: p.viewPath, zoomPath: zoom, inSec: p.inSec ?? undefined, outSec: p.outSec ?? undefined }
+  return { redactions: p.redactions, viewPath: p.viewPath, zoomPath: zoom, redactOutside: p.redactOutside ?? undefined, inSec: p.inSec ?? undefined, outSec: p.outSec ?? undefined }
 }
 
 const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
@@ -44,6 +47,7 @@ export function stateFromEntry(e: Partial<ProjectEntry> | undefined): EditableSt
     redactions: Array.isArray(e?.redactions) ? e.redactions : [],
     viewPath: Array.isArray(e?.viewPath) ? e.viewPath : [],
     zoomPath: readZoomPath(e?.zoomPath),
+    redactOutside: e?.redactOutside === 'blur' || e?.redactOutside === 'pixelate' || e?.redactOutside === 'solid' ? e.redactOutside : null,
     inSec: isNum(e?.inSec) ? e.inSec : null,
     outSec: isNum(e?.outSec) ? e.outSec : null
   }

@@ -40,7 +40,13 @@ export const OperationSchema = z.discriminatedUnion('type', [
     interpolation: z.string(),
     maxUpscale: z.number()
   }),
-  z.object({ type: z.literal('redaction'), tracks: z.array(z.unknown()) }),
+  z.object({
+    type: z.literal('redaction'),
+    tracks: z.array(z.unknown()),
+    /** inside: the boxes are hidden; outside: everything except the boxes is hidden with outsideStyle */
+    mode: z.enum(['inside', 'outside']).optional(),
+    outsideStyle: z.enum(['blur', 'pixelate', 'solid']).nullable().optional()
+  }),
   z.object({ type: z.literal('overlay'), timestamp: z.boolean(), cameraName: z.boolean(), customText: z.string().nullable() }),
   z.object({ type: z.literal('encode'), videoCodec: z.string(), encoder: z.string(), normalizedFps: z.number(), audio: z.string().nullable() }),
   z.object({ type: z.literal('snapshot'), mediaTimeSec: z.number(), wallClock: z.string().nullable() })

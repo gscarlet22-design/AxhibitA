@@ -80,6 +80,18 @@ describe('tracks', () => {
     expect(activeRedactions([tr], 2)).toHaveLength(1)
     expect(activeRedactions([{ ...tr, keyframes: [tr.keyframes[0]] }], 99)).toHaveLength(1)
   })
+  it('new boxes appear at their first keyframe and stay to the end', () => {
+    const tr = { id: 'n', style: 'solid' as const, enabled: true, range: 'from' as const, keyframes: [
+      { tSec: 12, value: { x: 0, y: 0, w: 1, h: 1 } },
+      { tSec: 14, value: { x: 9, y: 0, w: 1, h: 1 } }
+    ] }
+    expect(activeRedactions([tr], 0)).toHaveLength(0)
+    expect(activeRedactions([tr], 11.9)).toHaveLength(0)
+    // covers the frame it was drawn on even if the clock sat slightly past that frame's start
+    expect(activeRedactions([tr], 11.97)).toHaveLength(1)
+    expect(activeRedactions([tr], 13)[0].box.x).toBeCloseTo(4.5)
+    expect(activeRedactions([tr], 99)[0].box.x).toBe(9)
+  })
   it('PTZ path takes the short way around', () => {
     const k: Keyframe<PtzState>[] = [
       { tSec: 0, value: { panDeg: 170, tiltDeg: 30, hfovDeg: 60 } },

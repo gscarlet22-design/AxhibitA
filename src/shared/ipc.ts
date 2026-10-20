@@ -1,6 +1,6 @@
 /** Typed IPC contract between main and renderer (single source of truth). */
 import type { ProjectEntry } from './project'
-import type { Box, Calibration, JobEvent, PtzState, Recording, RedactionTrack, SignedVideoResult, ViewState, ZoomPath } from './types'
+import type { Box, Calibration, JobEvent, PtzState, Recording, RedactionTrack, RedactOutside, SignedVideoResult, ViewState, ZoomPath } from './types'
 
 export const IPC = {
   openPaths: 'library:open',
@@ -69,6 +69,8 @@ export interface ExportRequest {
   outW: number
   outH: number
   redactions: RedactionTrack[]
+  /** hide everything outside the boxes with this style instead of inside them (default: inside) */
+  redactOutside?: RedactOutside
   overlay: { timestamp: boolean; cameraName: boolean; customText: string | null }
   includeAudio: boolean
   outputDir: string
@@ -90,6 +92,8 @@ export interface SnapshotRequest {
   view: ViewState
   calib: Calibration | null
   redactions: RedactionTrack[]
+  /** hide everything outside the boxes with this style instead of inside them (default: inside) */
+  redactOutside?: RedactOutside
   outputDir: string
   fileStem: string
   notes: string | null
@@ -116,6 +120,8 @@ export interface RenderSpec {
   inSec: number
   view: ExportView
   redactions: RedactionTrack[]
+  /** hide everything outside the boxes with this style instead of inside them (default: inside) */
+  redactOutside?: RedactOutside
   overlay: ExportRequest['overlay']
   cameraName: string | null
   wallClockStart: string | null

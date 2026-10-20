@@ -99,6 +99,16 @@ describe('manifest', () => {
     expect(m.integrity.signedVideo.status).toBe('not_checked')
     expect(m.notes).toBeNull()
   })
+  it('records whether boxes were hidden or were the only thing left visible', () => {
+    const m = buildManifest({
+      appVersion: '1.1.0', ffmpegVersion: 'n8.1', encoder: 'h264_nvenc', createdAt: new Date('2026-10-20T20:00:00Z'),
+      osUser: 'g', operatorName: null, source: src, sourceSha256: h, signedVideo: null,
+      operations: [{ type: 'redaction', tracks: [], mode: 'outside', outsideStyle: 'blur' }],
+      ffmpegArgs: [['-i', 'x']], output: { fileName: 'o.mp4', sizeBytes: 5, sha256: h, width: 1920, height: 1080, fps: 15, durationSec: 3 },
+      notes: null
+    })
+    expect(m.operations[0]).toMatchObject({ type: 'redaction', mode: 'outside', outsideStyle: 'blur' })
+  })
   it('rejects malformed hashes', () => {
     expect(() =>
       buildManifest({

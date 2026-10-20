@@ -42,15 +42,31 @@ export function evalBox(k: Keyframe<Box>[], t: number): Box | null {
 }
 
 /**
- * Active redaction boxes at time t. By default a track covers the whole recording (holding its first/last
- * position) so a subject is never accidentally exposed; range 'keyframes' limits it to first..last keyframe.
+ * A box starts this much before its first keyframe: a paused video's clock can sit a little after the start
+ * of the frame on screen, and the box must cover the frame it was drawn on.
+ */
+export const BOX_START_TOLERANCE_SEC = 0.05
+
+/** Whether a track applies at time t, per its range (see RedactionTrack.range). */
+export function trackActiveAt(tr: RedactionTrack, t: number): boolean {
+  if (!tr.enabled || tr.keyframes.length === 0) return false
+  const k = sortKeyframes(tr.keyframes)
+  const range = tr.range ?? 'all'
+  if (range === 'all') return true
+  if (t < k[0].tSec - BOX_START_TOLERANCE_SEC) return false
+  if (range === 'keyframes' && k.length > 1 && t > k[k.length - 1].tSec + 1e-6) return false
+  return true
+}
+
+/**
+ * Active redaction boxes at time t. New boxes apply from their first keyframe on ('from'); 'keyframes' limits
+ * a box to first..last keyframe; 'all' (1.0 default) covers the whole recording, holding the first/last position.
  */
 export function activeRedactions(tracks: RedactionTrack[], t: number): { box: Box; style: RedactionTrack['style'] }[] {
   const out: { box: Box; style: RedactionTrack['style'] }[] = []
   for (const tr of tracks) {
-    if (!tr.enabled || tr.keyframes.length === 0) continue
+    if (!trackActiveAt(tr, t)) continue
     const k = sortKeyframes(tr.keyframes)
-    if (tr.range === 'keyframes' && k.length > 1 && (t < k[0].tSec - 1e-6 || t > k[k.length - 1].tSec + 1e-6)) continue
     const box = evalBox(k, t)
     if (box) out.push({ box, style: tr.style })
   }

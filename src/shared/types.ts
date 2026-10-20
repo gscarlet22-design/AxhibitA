@@ -56,10 +56,18 @@ export interface RedactionTrack {
   style: RedactStyle
   keyframes: Keyframe<Box>[]
   enabled: boolean
-  /** 'all' (default, safest): hidden for the whole recording, holding the first/last position.
-   *  'keyframes': only between the first and last keyframe. */
-  range?: 'all' | 'keyframes'
+  /** When the box applies:
+   *  'from' (new boxes): from its first keyframe to the end, holding the last position.
+   *  'keyframes': only between the first and last keyframe (from the first keyframe on, when there is one).
+   *  'all' (or unset, as in 1.0 projects): the whole recording, holding the first/last position. */
+  range?: 'all' | 'from' | 'keyframes'
 }
+
+/**
+ * How boxes redact: null hides what's inside the boxes; a style hides everything *outside* them with
+ * that style (the boxes are what stays visible).
+ */
+export type RedactOutside = RedactStyle | null
 
 export interface ViewPathTrack {
   keyframes: Keyframe<PtzState>[]

@@ -305,6 +305,54 @@ if (drawn) {
   check('following through the PTZ view keeps the subject covered', worst < 0.03, `${pk.length} keyframes; worst exposed ${(worst * 100).toFixed(1)}%`)
 }
 
+// a box drawn partway through only applies from that moment on
+await win.evaluate((id) => {
+  window.__axhibitStore.getState().updatePer(id, (x) => ({ ...x, fisheye: false, redactions: [], redactOutside: null, view: { ...x.view, mode: 'normal', normal: { zoom: 1, centerX: 0.5, centerY: 0.5 } } }))
+  window.__axhibitStore.setState({ rightTab: 'redact', tool: 'none', selectedTrack: null })
+}, mover)
+await win.evaluate(() => window.__axhibitPlayer.seek(2))
+await win.waitForTimeout(800)
+await win.keyboard.press('b')
+const late = { x: 2800, y: 300, w: 400, h: 400 } // plain gray area, away from the square
+const la = toScreen(late.x, late.y), lb = toScreen(late.x + late.w, late.y + late.h)
+await win.mouse.move(la.x, la.y)
+await win.mouse.down()
+await win.mouse.move(lb.x, lb.y, { steps: 5 })
+await win.mouse.up()
+const lateTrack = await win.evaluate((id) => window.__axhibitStore.getState().per[id].redactions[0], mover)
+check('a new box starts where it was drawn', lateTrack?.range === 'from' && Math.abs(lateTrack.keyframes[0].tSec - 2) < 0.1, JSON.stringify({ range: lateTrack?.range, t: lateTrack?.keyframes[0]?.tSec }))
+const lx = await runJob('exportClip', {
+  recordingId: mover, inSec: 0.5, outSec: 3.5, trimMode: 'exact', view: { kind: 'original' }, outW: 1920, outH: 1080,
+  redactions: [{ ...lateTrack, style: 'solid' }], redactOutside: null,
+  overlay: { timestamp: false, cameraName: false, customText: null }, includeAudio: false, outputDir: exportDir, fileStem: 'late-box', notes: null
+})
+const lumaAt = (file, at, sx, sy) => {
+  const buf = execFileSync(FFMPEG, ['-v', 'error', '-ss', at, '-i', file, '-frames:v', '1', '-vf', `crop=20:20:${Math.round(sx / 2) - 10}:${Math.round(sy / 2) - 10},format=gray`, '-f', 'rawvideo', '-'])
+  return buf.reduce((a, b) => a + b, 0) / buf.length
+}
+if (lx.kind === 'done') {
+  const before = lumaAt(lx.result.outputPath, '0.5', 3000, 500) // t = 1.0
+  const afterB = lumaAt(lx.result.outputPath, '2.0', 3000, 500) // t = 2.5
+  check('the box is absent before it was drawn and solid after', before > 100 && afterB < 30, `luma before ${before.toFixed(0)}, after ${afterB.toFixed(0)}`)
+} else check('late-box export finished', false, lx.message ?? '')
+
+// hide everything except the boxes
+const keep = { x: 350, y: 750, w: 300, h: 300 } // around the square at t = 0
+const ox = await runJob('exportClip', {
+  recordingId: mover, inSec: 0, outSec: 1, trimMode: 'exact', view: { kind: 'original' }, outW: 1920, outH: 1080,
+  redactions: [{ id: 'keep', style: 'pixelate', enabled: true, range: 'from', keyframes: [{ tSec: 0, value: keep }] }], redactOutside: 'solid',
+  overlay: { timestamp: false, cameraName: false, customText: null }, includeAudio: false, outputDir: exportDir, fileStem: 'outside', notes: null
+})
+if (ox.kind === 'done') {
+  const buf = execFileSync(FFMPEG, ['-v', 'error', '-i', ox.result.outputPath, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { maxBuffer: 64 * 1024 * 1024 })
+  let red = 0
+  for (let i = 0; i < buf.length; i += 3) if (buf[i] > 150 && buf[i + 1] < 90 && buf[i + 2] < 90) red++
+  const outsideLuma = lumaAt(ox.result.outputPath, '0', 2800, 1600)
+  const m = JSON.parse(readFileSync(ox.result.manifestPath, 'utf8'))
+  const op = m.operations.find((o) => o.type === 'redaction')
+  check('"everything but the boxes" keeps the box clear and hides the rest', red > 0.9 * 100 * 100 && outsideLuma < 30 && op?.mode === 'outside' && op?.outsideStyle === 'solid', `red px ${red}, outside luma ${outsideLuma.toFixed(0)}, manifest ${JSON.stringify(op && { mode: op.mode, outsideStyle: op.outsideStyle })}`)
+} else check('outside-redaction export finished', false, ox.message ?? '')
+
 // 4. fast trim keeps original bytes per frame (stream copy)
 const fast = await runJob('exportClip', {
   recordingId: fish, inSec: 10, outSec: 14, trimMode: 'fast', view: { kind: 'original' }, outW: 2880, outH: 2880, redactions: [],

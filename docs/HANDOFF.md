@@ -234,6 +234,30 @@ Garrett asked for redaction boxes that can be moved along with a subject while t
     - following through PTZ leaves 0.0% of the subject exposed in the export.
   - **Known trade-off:** near the lens edge the stored axis-aligned box covers noticeably more than the drawn shape. In the e2e, a 200 px square drawn on PTZ became a 294×465 raw box. A tighter fit would need rotated or curved redaction shapes in the shader and manifest.
 
+## 3c. Redaction timing and "hide everything but the boxes" (done 2026-10-20, after 1.1.0)
+
+Garrett's feedback on 1.1.0: a box drawn partway through showed from the start of the clip, and he wanted an option to redact everything except the boxes.
+
+- [x] **New boxes start where they're drawn.**
+  - New boxes get `range: 'from'`: active from the first keyframe to the end (`trackActiveAt` in `shared/tracks.ts`).
+  - They start `BOX_START_TOLERANCE_SEC` (50 ms) early, so they cover the frame they were drawn on even when a paused video's clock sits slightly past that frame's start.
+  - Per box, **Shows** offers from first keyframe / between first and last / whole recording.
+  - Unset ranges (1.0 projects) still mean the whole recording.
+  - The timeline lane draws each box's real extent.
+- [x] **Hide everything except the boxes.**
+  - Per recording, `PerRecording.redactOutside: RedactStyle | null` is sent as `redactOutside` in the export, snapshot and render specs.
+  - Shader `uOutside`: inside any box samples the clear image. Outside, `redactFrame` blurs, pixelates (blocks anchored at the source origin, sized to the frame) or blacks out.
+  - Box styles are ignored in this mode; the UI says "Stays visible" and outlines the boxes in green.
+  - With no boxes, the whole picture is hidden, and the export dialog still applies it.
+  - The manifest `redaction` operation gains `mode` ('inside' | 'outside') and `outsideStyle`. Saved projects keep the mode.
+- [x] **Tests:**
+  - Unit tests: `from` timing including the tolerance, project round trip, and the manifest fields.
+  - Three e2e checks:
+    - drawing at 2 s stores a 'from' box;
+    - the export shows no box before 2 s and a solid box after;
+    - outside mode keeps the boxed square fully visible, blacks out the rest, and records `mode: outside`.
+- [ ] **Watch:** in one run the moving-square section stalled (zoom-path playback stuck at t = 0, then the app window closed); the rerun passed with 41/41. Along with the earlier one-off follow failure, this suggests something intermittent around that fixture (it's MPEG-4, so it plays through a playable copy). If it repeats, capture `[pageerror]` and the main-process log.
+
 ## 4. UI refresh (done 2026-10-20, version 1.1.0)
 
 Garrett picked direction A ("Studio") from the design mockups: same dark palette and amber accent, softer and more modern.

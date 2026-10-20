@@ -112,7 +112,7 @@ describe('recording and simplification', () => {
 describe('saved projects', () => {
   it('round-trips zoom paths', () => {
     const z: ZoomPath = { aspect: A, keyframes: [kf(1, 10, 20, 300)] }
-    const e = entryFromState({ redactions: [], viewPath: [], zoomPath: z, inSec: null, outSec: null })!
+    const e = entryFromState({ redactions: [], viewPath: [], zoomPath: z, redactOutside: null, inSec: null, outSec: null })!
     expect(stateFromEntry(JSON.parse(JSON.stringify(e))).zoomPath).toEqual(z)
   })
   it('reads 1.0 projects (no zoom path) and drops malformed data', () => {
@@ -124,7 +124,13 @@ describe('saved projects', () => {
     expect(stateFromEntry({ zoomPath: { aspect: 'x', keyframes: [] } } as never).zoomPath).toBeNull()
     expect(stateFromEntry({ zoomPath: { aspect: 1, keyframes: [{ tSec: 1, value: { cxPx: 1, cyPx: 1, hPx: -5 } }] } } as never).zoomPath).toBeNull()
   })
+  it('keeps the redact-outside mode and ignores unknown values', () => {
+    const e = entryFromState({ redactions: [], viewPath: [], zoomPath: null, redactOutside: 'blur', inSec: 1, outSec: null })!
+    expect(stateFromEntry(JSON.parse(JSON.stringify(e))).redactOutside).toBe('blur')
+    expect(stateFromEntry({ redactOutside: 'sparkles' } as never).redactOutside).toBeNull()
+    expect(stateFromEntry({}).redactOutside).toBeNull()
+  })
   it('skips recordings with nothing to save', () => {
-    expect(entryFromState({ redactions: [], viewPath: [], zoomPath: { aspect: A, keyframes: [] }, inSec: null, outSec: null })).toBeNull()
+    expect(entryFromState({ redactions: [], viewPath: [], zoomPath: { aspect: A, keyframes: [] }, redactOutside: null, inSec: null, outSec: null })).toBeNull()
   })
 })

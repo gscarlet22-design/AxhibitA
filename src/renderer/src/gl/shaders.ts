@@ -33,6 +33,7 @@ uniform int uBoxCount;
 uniform vec4 uBoxes[${MAX_BOXES}];
 uniform int uBoxStyle[${MAX_BOXES}]; // 0 blur, 1 pixelate, 2 solid
 uniform float uTexScale;  // texture px per source px
+uniform int uOutside;     // -1: redact inside the boxes; 0 blur / 1 pixelate / 2 solid: redact everything outside them
 uniform float uGrid;      // >0: draw a faint grid outside the image (unused in export)
 
 const float PI = 3.141592653589793;
@@ -88,12 +89,26 @@ vec4 sampleTex(vec2 p, float lod) {
   return texture(uTex, uv);
 }
 
+// "everything but the boxes": the rest of the frame, with strength relative to the whole frame
+// (blocks anchored at the source origin, so screen and export agree whatever region is decoded)
+vec4 redactFrame(vec2 p, int st) {
+  if (st == 2) return vec4(0.06, 0.06, 0.07, 1.0);
+  float m = max(uSrcSize.x, uSrcSize.y);
+  if (st == 1) {
+    float block = max(8.0, m / 60.0);
+    vec2 q = clamp((floor(p / block) + 0.5) * block, vec2(0.0), uSrcSize - 1.0);
+    return sampleTex(q, max(0.0, log2(block * uTexScale) - 1.0));
+  }
+  return sampleTex(p, max(1.0, log2(max(1.0, m * uTexScale / 40.0))));
+}
+
 vec4 sampleSource(vec2 p) {
   if (p.x < 0.0 || p.y < 0.0 || p.x >= uSrcSize.x || p.y >= uSrcSize.y) return vec4(0.0, 0.0, 0.0, 1.0);
   for (int i = 0; i < ${MAX_BOXES}; i++) {
     if (i >= uBoxCount) break;
     vec4 b = uBoxes[i];
     if (p.x >= b.x && p.y >= b.y && p.x <= b.x + b.z && p.y <= b.y + b.w) {
+      if (uOutside >= 0) return sampleTex(p, 0.0); // inside a box stays visible
       int st = uBoxStyle[i];
       if (st == 2) return vec4(0.06, 0.06, 0.07, 1.0);
       float m = max(b.z, b.w);
@@ -107,6 +122,7 @@ vec4 sampleSource(vec2 p) {
       return sampleTex(p, max(1.0, log2(max(1.0, m * uTexScale / 5.0))));
     }
   }
+  if (uOutside >= 0) return redactFrame(p, uOutside);
   return sampleTex(p, 0.0);
 }
 

@@ -93,7 +93,11 @@ Validate with zod in `src/shared/manifest/schema.ts`. Write pretty-printed UTF-8
       "view": { "panDeg": 42, "tiltDeg": 35, "hfovDeg": 70 } },
     { "type": "zoom_path", "aspect": 1.7778, "keyframes": [ { "tSec": 0, "cxPx": 500, "cyPx": 900, "hPx": 540 }, { "tSec": 3.5, "cxPx": 2300, "cyPx": 1500, "hPx": 540 } ],
       "interpolation": "window height in log space, center linear in source px, ease-in-out; ...", "maxUpscale": 1.333 },  // zoom-path exports only; maxUpscale > 1 = enlarged past native detail
-    { "type": "redaction", "tracks": [ { "id": "r1", "style": "pixelate", "keyframes": [ { "tSec": 121.0, "x": 800, "y": 400, "w": 120, "h": 160 } ] } ] },
+    { "type": "redaction", "mode": "inside", "outsideStyle": null,
+      "tracks": [ { "id": "r1", "style": "pixelate", "range": "from", "keyframes": [ { "tSec": 121.0, "value": { "x": 800, "y": 400, "w": 120, "h": 160 } } ] } ] },
+      // mode "inside": each box is hidden with its style. mode "outside": everything except the boxes is hidden with
+      // outsideStyle (blur | pixelate | solid). range: "from" = first keyframe to end (new boxes, starting 50 ms early to
+      // cover the frame drawn on), "keyframes" = first..last keyframe, "all" or absent = whole recording (1.0).
     { "type": "overlay", "timestamp": true, "cameraName": true, "customText": null },
     { "type": "encode", "videoCodec": "h264", "encoder": "h264_mf", "audio": "aac 128k" }
   ],

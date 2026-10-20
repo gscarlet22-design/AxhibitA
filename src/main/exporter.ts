@@ -69,7 +69,7 @@ function viewOperations(req: ExportRequest, srcW: number, srcH: number): Operati
     })
   }
   const red = req.redactions.filter((r) => r.enabled && r.keyframes.length)
-  if (red.length) ops.push({ type: 'redaction', tracks: red })
+  if (red.length || req.redactOutside) ops.push({ type: 'redaction', tracks: red, mode: req.redactOutside ? 'outside' : 'inside', outsideStyle: req.redactOutside ?? null })
   if (req.overlay.timestamp || req.overlay.cameraName || req.overlay.customText) {
     ops.push({ type: 'overlay', timestamp: req.overlay.timestamp, cameraName: req.overlay.cameraName, customText: req.overlay.customText })
   }
@@ -223,6 +223,7 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
     inSec: req.inSec,
     view: req.view,
     redactions: req.redactions,
+    redactOutside: req.redactOutside ?? null,
     overlay: req.overlay,
     cameraName: src.cameraName ?? null,
     wallClockStart: src.wallClockStart ?? null,
@@ -460,7 +461,7 @@ export async function exportSnapshot(req: SnapshotRequest): Promise<ExportResult
       ops.push({ type: 'digital_zoom', view: { ...req.view.normal } })
     }
     const red = req.redactions.filter((r) => r.enabled && r.keyframes.length)
-    if (red.length) ops.push({ type: 'redaction', tracks: red })
+    if (red.length || req.redactOutside) ops.push({ type: 'redaction', tracks: red, mode: req.redactOutside ? 'outside' : 'inside', outsideStyle: req.redactOutside ?? null })
     const st = await stat(out)
     const m = buildManifest({
       appVersion: app.getVersion(),

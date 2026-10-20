@@ -32,7 +32,7 @@ export function ExportDialog() {
   const [ts, setTs] = useState(true)
   const [cam, setCam] = useState(true)
   const [custom, setCustom] = useState('')
-  const [redact, setRedact] = useState(activeRedactions.length > 0)
+  const [redact, setRedact] = useState(activeRedactions.length > 0 || per.redactOutside !== null)
   const [audio, setAudio] = useState(!!rec.audio)
   const [dir, setDir] = useState<string | null>(s.settings?.defaultOutputDir ?? null)
   // settings can arrive after the dialog opens; pick up the default folder unless the user already chose one
@@ -62,7 +62,7 @@ export function ExportDialog() {
   }, [choice])
 
   const overlayOn = ts || cam || !!custom.trim()
-  const pixelOps = choice !== 'original' || (redact && activeRedactions.length > 0) || overlayOn
+  const pixelOps = choice !== 'original' || (redact && (activeRedactions.length > 0 || per.redactOutside !== null)) || overlayOn
   const fastAllowed = !pixelOps
   const effectiveTrim = fastAllowed ? trim : 'exact'
 
@@ -108,6 +108,7 @@ export function ExportDialog() {
       outW: size[0],
       outH: size[1],
       redactions: redact ? activeRedactions : [],
+      redactOutside: redact ? per.redactOutside : null,
       overlay: { timestamp: ts, cameraName: cam, customText: custom.trim() || null },
       includeAudio: audio,
       outputDir: outDir,
@@ -206,7 +207,7 @@ export function ExportDialog() {
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 <Check checked={ts} onChange={setTs} label="Date & time" />
                 <Check checked={cam} onChange={setCam} label="Camera name" />
-                {activeRedactions.length > 0 && <Check checked={redact} onChange={setRedact} label={`Redactions (${activeRedactions.length})`} />}
+                {(activeRedactions.length > 0 || per.redactOutside !== null) && <Check checked={redact} onChange={setRedact} label={per.redactOutside !== null ? `Redaction: hide all but ${activeRedactions.length} box${activeRedactions.length === 1 ? '' : 'es'}` : `Redactions (${activeRedactions.length})`} />}
                 {rec.audio && <Check checked={audio} onChange={setAudio} label="Audio" />}
               </div>
               <input className="input mt-2" placeholder="Extra text, e.g. case number (optional)" value={custom} onChange={(e) => setCustom(e.target.value)} />

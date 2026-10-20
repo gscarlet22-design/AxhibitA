@@ -275,6 +275,31 @@ function RedactTab({ rec }: { rec: Recording }) {
         <button className={`btn-primary w-full ${s.tool === 'redact-draw' ? 'ring-2 ring-amber-300' : ''}`} disabled={!rawShown} onClick={() => useApp.setState({ tool: s.tool === 'redact-draw' ? 'none' : 'redact-draw' })}>
           {s.tool === 'redact-draw' ? 'Drag on the video to draw…' : <><IconPlus size={15} />Draw box <Kbd>B</Kbd></>}
         </button>
+        <div className="mt-3">
+          <span className="block text-[10.5px] text-ink-500 mb-1">Hide</span>
+          <div role="radiogroup" aria-label="What to hide" className="grid grid-cols-2 gap-1">
+            {([[null, 'Inside the boxes'], ['blur', 'Everything else']] as const).map(([v, label]) => {
+              const on = v === null ? per.redactOutside === null : per.redactOutside !== null
+              return (
+                <button key={label} role="radio" aria-checked={on} onClick={() => s.updatePer(rec.id, (x) => ({ ...x, redactOutside: v === null ? null : x.redactOutside ?? 'blur' }))}
+                  className={`py-1.5 rounded text-[11.5px] border ${on ? 'bg-amber-500 text-ink-950 border-amber-500 font-semibold' : 'border-ink-700 text-ink-300 hover:bg-ink-800'}`}>
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          {per.redactOutside !== null && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[11px] text-ink-400 flex-1">Only the boxes stay visible. The rest is</span>
+              <select className="input w-24 h-7" value={per.redactOutside} onChange={(e) => s.updatePer(rec.id, (x) => ({ ...x, redactOutside: e.target.value as RedactStyle }))}>
+                <option value="blur">Blurred</option>
+                <option value="pixelate">Pixelated</option>
+                <option value="solid">Blacked out</option>
+              </select>
+            </div>
+          )}
+          {per.redactOutside !== null && per.redactions.length === 0 && <p className="text-[11px] text-amber-400 mt-1.5">With no boxes, the whole picture is hidden.</p>}
+        </div>
       </Section>
       {per.redactions.length > 0 && (
         <div className="space-y-2">
@@ -286,20 +311,28 @@ function RedactTab({ rec }: { rec: Recording }) {
                 <div className="flex items-center gap-2">
                   <input type="checkbox" className="accent-amber-500" checked={r.enabled} onChange={(e) => update(r.id, (x) => ({ ...x, enabled: e.target.checked }))} onClick={(e) => e.stopPropagation()} />
                   <span className="text-xs font-medium flex-1">Box {i + 1}</span>
-                  <select className="input w-24 h-7" value={r.style} onChange={(e) => update(r.id, (x) => ({ ...x, style: e.target.value as RedactStyle }))} onClick={(e) => e.stopPropagation()}>
-                    <option value="pixelate">Pixelate</option>
-                    <option value="blur">Blur</option>
-                    <option value="solid">Solid</option>
-                  </select>
+                  {per.redactOutside === null ? (
+                    <select className="input w-24 h-7" value={r.style} onChange={(e) => update(r.id, (x) => ({ ...x, style: e.target.value as RedactStyle }))} onClick={(e) => e.stopPropagation()}>
+                      <option value="pixelate">Pixelate</option>
+                      <option value="blur">Blur</option>
+                      <option value="solid">Solid</option>
+                    </select>
+                  ) : (
+                    <span className="text-[11px] text-evid-ok">Stays visible</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-ink-400 mt-1.5">
-                  {sorted.length} keyframe{sorted.length > 1 ? 's' : ''} · {r.range === 'keyframes' && sorted.length > 1 ? `${formatElapsed(sorted[0].tSec, true)} – ${formatElapsed(sorted[sorted.length - 1].tSec, true)}` : 'whole recording'}
+                  {sorted.length} keyframe{sorted.length > 1 ? 's' : ''} · {rangeLabel(r.range, sorted)}
                   {b && ` · ${Math.round(b.w)}×${Math.round(b.h)} px`}
                 </div>
-                {s.selectedTrack === r.id && sorted.length > 1 && (
-                  <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-ink-300" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" className="accent-amber-500" checked={r.range === 'keyframes'} onChange={(e) => update(r.id, (x) => ({ ...x, range: e.target.checked ? 'keyframes' : 'all' }))} />
-                    Only between first and last keyframe
+                {s.selectedTrack === r.id && (
+                  <label className="flex items-center gap-2 mt-2 text-[11px] text-ink-300" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-ink-500">Shows</span>
+                    <select className="input flex-1 h-7" value={r.range ?? 'all'} onChange={(e) => update(r.id, (x) => ({ ...x, range: e.target.value as 'all' | 'from' | 'keyframes' }))}>
+                      <option value="from">From its first keyframe on</option>
+                      <option value="keyframes">Only between first and last keyframe</option>
+                      <option value="all">For the whole recording</option>
+                    </select>
                   </label>
                 )}
                 {s.selectedTrack === r.id && (
@@ -351,6 +384,13 @@ function RedactTab({ rec }: { rec: Recording }) {
       </Section>
     </>
   )
+}
+
+function rangeLabel(range: 'all' | 'from' | 'keyframes' | undefined, sorted: { tSec: number }[]) {
+  if (!sorted.length || (range ?? 'all') === 'all') return 'whole recording'
+  const first = formatElapsed(sorted[0].tSec, true)
+  if (range === 'keyframes' && sorted.length > 1) return `${first} – ${formatElapsed(sorted[sorted.length - 1].tSec, true)}`
+  return `from ${first}`
 }
 
 async function saveProject() {

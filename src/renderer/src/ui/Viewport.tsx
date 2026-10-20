@@ -97,7 +97,7 @@ export function Viewport() {
     if (!rec) return
     const id = `r${Date.now().toString(36)}`
     const t = player.currentMediaTime()
-    s.updatePer(rec.id, (x) => ({ ...x, redactions: [...x.redactions, { id, style: 'pixelate', enabled: true, keyframes: [{ tSec: t, value: b }] }] }))
+    s.updatePer(rec.id, (x) => ({ ...x, redactions: [...x.redactions, { id, style: 'pixelate', enabled: true, range: 'from', keyframes: [{ tSec: t, value: b }] }] }))
     useApp.setState({ selectedTrack: id, tool: 'none' })
   }
 
@@ -375,7 +375,7 @@ export function Viewport() {
         const hasKf = tr.keyframes.some((k) => Math.abs(k.tSec - t) < 1 / 30)
         overlays.push(
           <g key={tr.id}>
-            <rect x={a.x} y={a.y} width={w} height={h} fill="none" stroke={sel ? '#ffcc33' : active ? '#f0566a' : '#8b95a5'} strokeWidth={sel ? 2 : 1.5} strokeDasharray={active ? undefined : '4 3'} />
+            <rect x={a.x} y={a.y} width={w} height={h} fill="none" stroke={sel ? '#ffcc33' : active ? (per.redactOutside ? '#3ecf8e' : '#f0566a') : '#8b95a5'} strokeWidth={sel ? 2 : 1.5} strokeDasharray={active ? undefined : '4 3'} />
             {hasKf && <polygon points={`${a.x + w / 2 - 5},${a.y - 8} ${a.x + w / 2},${a.y - 3} ${a.x + w / 2 + 5},${a.y - 8} ${a.x + w / 2},${a.y - 13}`} fill="#ffcc33" />}
             {sel &&
               [[a.x, a.y], [a.x + w, a.y], [a.x + w, a.y + h], [a.x, a.y + h]].map(([x, y], i) => (
@@ -412,7 +412,7 @@ export function Viewport() {
           if (!b) continue
           const active = isF || activeRedactions([tr], t).length > 0
           const sel = s.selectedTrack === tr.id
-          const color = isF ? '#f0566a' : sel ? '#ffcc33' : active ? '#f0566a' : '#8b95a5'
+          const color = isF ? '#f0566a' : sel ? '#ffcc33' : active ? (per.redactOutside ? '#3ecf8e' : '#f0566a') : '#8b95a5'
           sourceBoxOutline(b, tg.vp, tg.ptz, calib).forEach((line, li) =>
             items.push(<polyline key={`${tr.id}-${li}`} points={line.map((pt) => `${pt.x},${pt.y}`).join(' ')} fill={isF ? 'rgba(240,86,106,0.12)' : 'none'} stroke={color} strokeWidth={isF || sel ? 2.5 : 1.5} strokeDasharray={active ? undefined : '4 3'} />)
           )

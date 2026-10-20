@@ -30,7 +30,7 @@ function renderFrame(t: number, data: Uint8Array): Uint8Array {
   gl.clear()
   const vp = { x: 0, y: 0, w: spec.outW, h: spec.outH }
   const boxes = activeRedactions(spec.redactions, t)
-  drawExportView(gl, spec.view, { srcW: spec.srcW, srcH: spec.srcH, srcRect: spec.srcRect, boxes }, t, vp)
+  drawExportView(gl, spec.view, { srcW: spec.srcW, srcH: spec.srcH, srcRect: spec.srcRect, boxes, redactOutside: spec.redactOutside ?? null }, t, vp)
   gl.gl.finish()
   ctx2d.globalCompositeOperation = 'copy'
   ctx2d.drawImage(glCanvas, 0, 0)

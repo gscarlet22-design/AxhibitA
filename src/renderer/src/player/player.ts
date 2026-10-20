@@ -639,7 +639,7 @@ export class Player {
       gl.uploadVideo(this.single, r.video.width, r.video.height)
       const raw = !per.fisheye || s.tool === 'calibrate'
       const view = raw || per.view.mode === 'normal' ? { ...per.view, mode: 'normal' as const, normal: this.rawNormal(r.id, t) } : this.effectiveView(r.id, t)
-      drawView(gl, { srcW: r.video.width, srcH: r.video.height, view, calib: this.calibFor(r), boxes: this.boxesAt(r.id, per.redactions, t) }, scaleVp(this.cssViewport()))
+      drawView(gl, { srcW: r.video.width, srcH: r.video.height, view, calib: this.calibFor(r), boxes: this.boxesAt(r.id, per.redactions, t), redactOutside: per.redactOutside }, scaleVp(this.cssViewport()))
     } else {
       for (const tile of this.tiles) {
         if (tile.empty || !tile.activeId) continue
@@ -652,7 +652,7 @@ export class Player {
         const per = perFor(r.id)
         gl.uploadVideo(tile.video, r.video.width, r.video.height)
         const view = per.fisheye ? per.view : { ...per.view, mode: 'normal' as const }
-        drawView(gl, { srcW: r.video.width, srcH: r.video.height, view, calib: this.calibFor(r), boxes: activeRedactions(per.redactions, tile.video.currentTime) }, scaleVp(tile.vp))
+        drawView(gl, { srcW: r.video.width, srcH: r.video.height, view, calib: this.calibFor(r), boxes: activeRedactions(per.redactions, tile.video.currentTime), redactOutside: per.redactOutside }, scaleVp(tile.vp))
       }
     }
   }
@@ -704,7 +704,7 @@ export class Player {
       const t = v.currentTime
       const view = per.fisheye && per.view.mode !== 'normal' ? this.effectiveView(r.id, t) : { ...per.view, mode: 'normal' as const, normal: this.rawNormal(r.id, t) }
       const snapView: ViewState = view.mode === 'normal' ? snapNormal(view, r.video.width, r.video.height, outW, outH, this.cssViewport()) : view
-      drawView(g, { srcW: r.video.width, srcH: r.video.height, view: snapView, calib: this.calibFor(r), boxes: this.boxesAt(r.id, per.redactions, t) }, { x: 0, y: 0, w: outW, h: outH })
+      drawView(g, { srcW: r.video.width, srcH: r.video.height, view: snapView, calib: this.calibFor(r), boxes: this.boxesAt(r.id, per.redactions, t), redactOutside: per.redactOutside }, { x: 0, y: 0, w: outW, h: outH })
       const blob: Blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG encode failed'))), 'image/png'))
       return new Uint8Array(await blob.arrayBuffer())
     } finally {

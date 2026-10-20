@@ -116,7 +116,7 @@ export async function takeSnapshot() {
     const stem = `${rec.cameraName ?? 'snapshot'} ${d ? formatWallClock(d).replace(/:/g, '-') : formatElapsed(t).replace(/:/g, '-')}`
     const res = await window.axhibit.exportSnapshot({
       recordingId: rec.id, png, width: w, height: h, mediaTimeSec: t, view, calib: per.fisheye ? player.calibFor(rec) : null,
-      redactions: per.redactions, outputDir: dir, fileStem: stem, notes: null
+      redactions: per.redactions, redactOutside: per.redactOutside, outputDir: dir, fileStem: stem, notes: null
     })
     s.toast({ kind: 'success', text: 'Snapshot saved', action: { label: 'Show', run: () => void window.axhibit.reveal(res.outputPath) } })
   } catch (err) {
@@ -222,7 +222,7 @@ function Timeline({ dur, pos }: { dur: number; pos: number }) {
               color={s.selectedTrack === tr.id ? '#ffcc33' : '#f0566a'}
               times={tr.keyframes.map((k) => k.tSec)}
               pct={pct}
-              span={tr.range === 'keyframes' && tr.keyframes.length > 1}
+              extent={tr.range === 'keyframes' ? 'between' : tr.range === 'from' ? 'from' : 'all'}
               onClick={() => useApp.setState({ selectedTrack: tr.id, rightTab: 'redact' })}
             />
           ))}
@@ -243,7 +243,8 @@ function rulerTicks(dur: number): number[] {
   return out
 }
 
-function TrackLane({ label, color, times, pct, span = true, onClick, onDiamond }: { label: string; color: string; times: number[]; pct: (t: number) => number; span?: boolean; onClick?: () => void; onDiamond?: (t: number) => void }) {
+/** extent: the line drawn behind the keyframes: between the first and last, from the first to the end, or the whole timeline */
+function TrackLane({ label, color, times, pct, extent = 'between', onClick, onDiamond }: { label: string; color: string; times: number[]; pct: (t: number) => number; extent?: 'between' | 'from' | 'all'; onClick?: () => void; onDiamond?: (t: number) => void }) {
   const sorted = [...times].sort((a, b) => a - b)
   return (
     <>
@@ -252,8 +253,9 @@ function TrackLane({ label, color, times, pct, span = true, onClick, onDiamond }
         <span className="truncate">{label}</span>
       </button>
       <div className="relative h-3.5 cursor-pointer" onClick={onClick} title={label}>
-        {span && sorted.length > 1 && <div className="absolute top-1.5 h-0.5" style={{ left: `${pct(sorted[0])}%`, width: `${pct(sorted[sorted.length - 1]) - pct(sorted[0])}%`, background: color, opacity: 0.6 }} />}
-        {!span && <div className="absolute top-1.5 h-0.5 left-0 right-0" style={{ background: color, opacity: 0.35 }} />}
+        {extent === 'between' && sorted.length > 1 && <div className="absolute top-1.5 h-0.5" style={{ left: `${pct(sorted[0])}%`, width: `${pct(sorted[sorted.length - 1]) - pct(sorted[0])}%`, background: color, opacity: 0.6 }} />}
+        {extent === 'from' && sorted.length > 0 && <div className="absolute top-1.5 h-0.5 right-0" style={{ left: `${pct(sorted[0])}%`, background: color, opacity: 0.6 }} />}
+        {extent === 'all' && <div className="absolute top-1.5 h-0.5 left-0 right-0" style={{ background: color, opacity: 0.35 }} />}
         {sorted.map((t, i) => (
           <div
             key={i}

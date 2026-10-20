@@ -22,6 +22,8 @@ export interface DrawParams {
   ptz?: PtzState
   pano?: ViewState['pano']
   boxes?: { box: Box; style: RedactStyle }[]
+  /** hide everything outside the boxes with this style (null/undefined: hide inside them) */
+  redactOutside?: RedactStyle | null
 }
 
 const STYLE: Record<RedactStyle, number> = { blur: 0, pixelate: 1, solid: 2 }
@@ -71,7 +73,7 @@ export class GLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
-    for (const n of ['uTex', 'uSrcSize', 'uSrcRect', 'uOutSize', 'uMode', 'uNormCenter', 'uNormScale', 'uCalib', 'uFov', 'uModel', 'uMount', 'uPtz', 'uPano', 'uBoxCount', 'uBoxes', 'uBoxStyle', 'uTexScale']) {
+    for (const n of ['uTex', 'uSrcSize', 'uSrcRect', 'uOutSize', 'uMode', 'uNormCenter', 'uNormScale', 'uCalib', 'uFov', 'uModel', 'uMount', 'uPtz', 'uPano', 'uBoxCount', 'uBoxes', 'uBoxStyle', 'uTexScale', 'uOutside']) {
       this.u[n] = gl.getUniformLocation(this.prog, n)
     }
     gl.uniform1i(this.u.uTex, 0)
@@ -138,7 +140,7 @@ export class GLRenderer {
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, this.tex)
     const boxes = (p.boxes ?? []).slice(0, MAX_BOXES)
-    if (boxes.some((b) => b.style !== 'solid') && this.mipsDirty) {
+    if ((boxes.some((b) => b.style !== 'solid') || (p.redactOutside && p.redactOutside !== 'solid')) && this.mipsDirty) {
       gl.generateMipmap(gl.TEXTURE_2D)
       this.mipsDirty = false
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
@@ -165,6 +167,7 @@ export class GLRenderer {
     gl.uniform3f(this.u.uPtz, ptz.panDeg * DEG, ptz.tiltDeg * DEG, ptz.hfovDeg * DEG)
     const pano = p.pano ?? { offsetDeg: 0, topDeg: 0, bottomDeg: 70 }
     gl.uniform3f(this.u.uPano, pano.offsetDeg * DEG, pano.topDeg * DEG, pano.bottomDeg * DEG)
+    gl.uniform1i(this.u.uOutside, p.redactOutside ? STYLE[p.redactOutside] : -1)
     gl.uniform1i(this.u.uBoxCount, boxes.length)
     if (boxes.length) {
       const arr = new Float32Array(MAX_BOXES * 4)

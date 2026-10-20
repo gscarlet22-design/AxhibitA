@@ -52,6 +52,10 @@ Open the **Redact** tab, click **+ Draw box** (or **B**) and drag over the face 
 
 **Following someone who moves:** draw a box over them, keep it selected, and click **● Follow while playing**. The video plays (at ½ speed by default; pick 1× or ¼× next to the button). Drag anywhere on the video to keep the box on the person, and scroll to make the box bigger or smaller. Press **Space** or **■ Stop following** to finish. The movement is saved as keyframes, staying within a few pixels of how you steered, and you can fine-tune any moment afterwards. Make the box a little larger than the person, so quick movements stay covered. Recording over a stretch you've already done replaces just that stretch.
 
+**When a box applies:** a box starts at the moment you draw it and stays until the end of the recording. To change that, select it and use **Shows**: *From its first keyframe on* (the default), *Only between first and last keyframe*, or *For the whole recording*. The timeline line for each box shows where it applies. Boxes from projects saved with 1.0 keep covering the whole recording.
+
+**Hide everything except the boxes:** under **Hide**, choose **Everything else**. The boxes then become the only part of the picture left visible, and the rest is blurred, pixelated or blacked out (your choice). Use as many boxes as you need, for example one per person of interest. The outlines turn green in this mode. With no boxes, the whole picture is hidden. The manifest records which mode was used.
+
 ## Verifying camera signatures (signed video)
 If the camera has signed video enabled, open the **Verify** tab and click **Verify signatures**.
 - **Verified**: every part of the video carries a valid camera signature.
