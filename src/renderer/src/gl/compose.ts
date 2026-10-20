@@ -86,19 +86,23 @@ export function overlayLines(o: { timestamp: boolean; cameraName: boolean; custo
   return lines
 }
 
+/** Where the overlay box goes in a w×h frame (whole pixels, covering everything drawOverlay paints). */
+export function overlayBounds(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, lines: string[], w: number, h: number) {
+  const size = Math.max(12, Math.round(h / 32))
+  ctx.font = `600 ${size}px "Segoe UI", Inter, Arial, sans-serif`
+  const pad = Math.round(size * 0.45)
+  const lh = Math.round(size * 1.3)
+  const width = lines.length ? Math.max(...lines.map((l) => ctx.measureText(l).width)) : 0
+  return { x: Math.round(w * 0.015), y: Math.round(h * 0.02), w: Math.ceil(width + pad * 2), h: lines.length * lh + pad * 2 - (lh - size), size, pad, lh, width }
+}
+
 /** Burn overlay text into a 2D context (top-left, boxed for legibility). */
 export function drawOverlay(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, lines: string[], w: number, h: number): void {
   if (!lines.length) return
-  const size = Math.max(12, Math.round(h / 32))
-  ctx.font = `600 ${size}px "Segoe UI", Inter, Arial, sans-serif`
+  const b = overlayBounds(ctx, lines, w, h)
   ctx.textBaseline = 'top'
-  const pad = Math.round(size * 0.45)
-  const lh = Math.round(size * 1.3)
-  const width = Math.max(...lines.map((l) => ctx.measureText(l).width))
-  const x = Math.round(w * 0.015)
-  const y = Math.round(h * 0.02)
   ctx.fillStyle = 'rgba(0,0,0,0.6)'
-  ctx.fillRect(x, y, width + pad * 2, lines.length * lh + pad * 2 - (lh - size))
+  ctx.fillRect(b.x, b.y, b.width + b.pad * 2, b.h)
   ctx.fillStyle = '#ffffff'
-  lines.forEach((l, k) => ctx.fillText(l, x + pad, y + pad + k * lh))
+  lines.forEach((l, k) => ctx.fillText(l, b.x + b.pad, b.y + b.pad + k * b.lh))
 }

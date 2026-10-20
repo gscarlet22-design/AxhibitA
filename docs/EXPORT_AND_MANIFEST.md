@@ -35,16 +35,24 @@ ffmpeg -nostdin -hide_banner -n -ss <in> -i <src> -t <dur> -map 0:v:0 [-map 0:a:
 
 ### B. Re-encode via render pipeline (exact trim, any view, overlays, redaction)
 ```
-decoder: ffmpeg -nostdin -hide_banner -ss <in> -i <src> -t <dur> -map 0:v:0 -f rawvideo -pix_fmt rgba pipe:1
+decoder: ffmpeg -nostdin -hide_banner -ss <in> -i <src> -t <dur> -map 0:v:0 -vf [crop,scale,]fps,format=<yuvj420p|yuv420p>
+          -f rawvideo -pix_fmt <same> pipe:1
 renderer: hidden BrowserWindow (offscreen, sandboxed) runs the SAME WebGL renderer used on screen:
-          per frame: upload RGBA → redaction pass → view pass (normal/crop/dewarp/view-path at frame time)
-          → overlay text → readPixels at output size
-encoder: ffmpeg -nostdin -hide_banner -n -f rawvideo -pix_fmt rgba -s <OWxOH> -r <fps> -i pipe:0
-          [-ss <in> -t <dur> -i <src> -map 1:a:0 -c:a aac -b:a 128k] -map 0:v:0
-          -c:v <encoder> <encoderOpts> -pix_fmt yuv420p -movflags +faststart <out.mp4>
+          per frame: upload Y/U/V planes → YUV→RGB on the GPU (source matrix + range) → redaction + view pass
+          (normal/crop/dewarp/paths at frame time) → overlay box blended on the GPU → RGB→BT.709 limited yuv420p
+          packed on the GPU → asynchronous readback (pixel-pack buffer + fence)
+encoder: ffmpeg -nostdin -hide_banner -n -f rawvideo -pix_fmt yuv420p -color_range tv -colorspace bt709 ...
+          -s <OWxOH> -r <fps> -i pipe:0 [-ss <in> -t <dur> -i <src> -map 1:a:0 -c:a aac -b:a 128k] -map 0:v:0
+          -c:v <encoder> <encoderOpts> -pix_fmt yuv420p -color_range tv -colorspace bt709 ... -movflags +faststart <out.mp4>
 ```
+- **Frame format (1.1.2):** frames cross processes as planar YUV 4:2:0 both ways, 2.7× fewer bytes than RGBA, with no colour conversion inside FFmpeg.
+  - In: the source's own range is kept (`yuvTransportFor`: Axis streams are full-range `yuvj420p`), and the GPU converts with the stream's matrix (BT.709, or BT.601 when tagged or for SD), as the browser does on screen.
+  - Out: the GPU writes exactly what the file is tagged as (BT.709 limited), so FFmpeg passes it straight to the encoder.
+  - Fallback: RGBA in and out when the output width isn't a multiple of 8 or the height a multiple of 4 (`canPackYuvOutput`). `AXHIBIT_RGBA_FRAMES=1` forces RGBA in dev builds, for comparison.
+  - Any WebGL error during upload or readback fails the export, so it can never silently write blank frames.
+- **Colour check:** exports at native size, compared by PSNR with FFmpeg's own decode of the source converted to BT.709 limited range. The YUV path scores 44.8 dB (4K camera) and 46.9 dB (fisheye); the RGBA path scored 44.2 / 46.5 dB. GPU and software rendering (`AXHIBIT_DISABLE_GPU=1`) match to within 0.1 dB.
 - Frame timing: decode with `-fps_mode cfr -r <avg fps>` so every frame has a fixed slot (ACS recordings can be variable-frame-rate); feed the encoder at the same rate. Record `normalizedFps` in the manifest `encode` operation.
-- Backpressure: main reads frames from the decoder (≤3 buffered), sends them to the renderer over a MessagePort with **two frames in flight** (`FramePipe`, replies matched by index), and writes rendered frames to encoder stdin in order, respecting `drain`. A log line reports frames/s and time spent waiting on decode, render and encode.
+- Backpressure: main copies decoder output once into per-frame buffers (≤3 buffered), sends frames to the renderer over a MessagePort with **three frames in flight** (`FramePipe`, replies matched by index; the renderer replies when each asynchronous readback lands), and writes rendered frames to encoder stdin in order, respecting `drain`. A log line reports frames/s, the frame formats, and time spent waiting on decode, render and encode.
 - Decode plan (`planDecode` → `shared/export/footprint.ts`): for every view except Original, the decoder crops to the source region the view actually samples over the export range (PTZ/quad/view path via the TS dewarp mirror, zoom path via the union of its windows, zoomed normal view, crop) and downscales when the output never needs full detail (≥1.25 decoded px per output px where it needs the most), capped at 12 MP. The renderer offsets by `srcRect`, so redaction boxes stay in source px; the crop is padded 64 px when redactions are present.
 - Zoom path frames: window from `evalZoom` (height interpolated in log space, center linear in source px, ease-in-out, clamped inside the frame, held outside the keyframes), drawn with the normal shader mode at `normScale = outH / hPx`.
 - Overlay text is drawn by the renderer (2D canvas → texture), not by FFmpeg `drawtext` — no font escaping issues. Bundle an open-licensed font.

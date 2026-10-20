@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { rename, rm, stat, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
-import { even, fastTrimArgs, keyframeAtOrBefore, renderDecodeArgs, renderEncodeArgs } from '../shared/ffmpeg/args'
+import { canPackYuvOutput, even, fastTrimArgs, frameBytes as rawFrameBytes, keyframeAtOrBefore, renderDecodeArgs, renderEncodeArgs, yuvTransportFor } from '../shared/ffmpeg/args'
 import { sanitizeStem, uniqueStem } from '../shared/files'
 import type { ExportRequest, ExportResult, RenderSpec, SnapshotRequest } from '../shared/ipc'
 import { planFromFootprint, sampleTimes, viewFootprint } from '../shared/export/footprint'
@@ -201,15 +201,22 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
   const plan = planDecode(req, v.width, v.height)
   const outW = even(req.outW)
   const outH = even(req.outH)
+  // Frames travel as planar YUV 4:2:0 in the source's own range (no conversion in FFmpeg) and come back as
+  // BT.709 yuv420p made on the GPU: 2.7× fewer bytes than RGBA each way. RGBA remains as the fallback (output
+  // sizes the GPU packer can't lay out) and for comparison (AXHIBIT_RGBA_FRAMES=1).
+  const legacy = process.env.AXHIBIT_RGBA_FRAMES === '1'
+  const yuv = yuvTransportFor(v)
+  const inFmt = legacy ? 'rgba' : yuv.pixFmt
+  const outFmt = !legacy && canPackYuvOutput(outW, outH) ? 'yuv420p' : 'rgba'
   const vf: string[] = []
-  const decodeBase = renderDecodeArgs({ src: src.path, inSec: req.inSec + src.startTimeSec, durSec: dur, fps })
+  const decodeBase = renderDecodeArgs({ src: src.path, inSec: req.inSec + src.startTimeSec, durSec: dur, fps, pixFmt: inFmt })
   // insert crop + scale ahead of the fps/format filters when we decode a sub-region or downscale
   const vfIndex = decodeBase.indexOf('-vf') + 1
   if (plan.rect.x !== 0 || plan.rect.y !== 0 || plan.rect.w !== v.width || plan.rect.h !== v.height) vf.push(`crop=${plan.rect.w}:${plan.rect.h}:${plan.rect.x}:${plan.rect.y}`)
   if (plan.decW !== plan.rect.w || plan.decH !== plan.rect.h) vf.push(`scale=${plan.decW}:${plan.decH}:flags=bicubic`)
   decodeBase[vfIndex] = [...vf, decodeBase[vfIndex]].join(',')
   const decodeArgs = decodeBase
-  const encodeArgs = renderEncodeArgs({ src: src.path, out, inSec: req.inSec + src.startTimeSec, durSec: dur, w: outW, h: outH, fps, enc, includeAudio: req.includeAudio && !!src.audio })
+  const encodeArgs = renderEncodeArgs({ src: src.path, out, inSec: req.inSec + src.startTimeSec, durSec: dur, w: outW, h: outH, fps, enc, includeAudio: req.includeAudio && !!src.audio, inPixFmt: outFmt })
 
   const spec: RenderSpec = {
     srcW: v.width,
@@ -219,6 +226,7 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
     decH: plan.decH,
     outW,
     outH,
+    frames: { in: inFmt, out: outFmt, fullRange: yuv.fullRange, matrix: yuv.matrix },
     fps,
     inSec: req.inSec,
     view: req.view,
@@ -260,10 +268,11 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
   try {
     log('render: waiting for renderer ready')
     await sendAndWait(port1, { type: 'init', spec }, 'ready', 15000)
-    log(`render: renderer ready; decode ${plan.rect.w}x${plan.rect.h}+${plan.rect.x}+${plan.rect.y} at ${plan.decW}x${plan.decH} -> ${outW}x${outH}`)
-    const frameBytes = plan.decW * plan.decH * 4
-    let chunks: Buffer[] = []
-    let chunkBytes = 0
+    log(`render: renderer ready; decode ${plan.rect.w}x${plan.rect.h}+${plan.rect.x}+${plan.rect.y} at ${plan.decW}x${plan.decH} -> ${outW}x${outH}; frames ${inFmt} in, ${outFmt} out`)
+    const frameBytes = rawFrameBytes(inFmt, plan.decW, plan.decH)
+    const outBytes = rawFrameBytes(outFmt, outW, outH)
+    let cur = Buffer.allocUnsafe(frameBytes)
+    let filled = 0
     let index = 0
     let decoderDone = false
     let decoderExit: number | null = null
@@ -271,15 +280,18 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
     const frames: Buffer[] = []
     let wake: (() => void) | null = null
     decoder.stdout!.on('data', (chunk: Buffer) => {
-      chunks.push(chunk)
-      chunkBytes += chunk.length
-      // assemble whole frames with a single copy each (avoid quadratic re-concatenation)
-      while (chunkBytes >= frameBytes) {
-        const all = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, chunkBytes)
-        frames.push(Buffer.from(all.subarray(0, frameBytes)))
-        const rest = all.subarray(frameBytes)
-        chunks = rest.length ? [Buffer.from(rest)] : []
-        chunkBytes = rest.length
+      // copy each byte once, straight into the frame it belongs to
+      let off = 0
+      while (off < chunk.length) {
+        const n = Math.min(frameBytes - filled, chunk.length - off)
+        chunk.copy(cur, filled, off, off + n)
+        filled += n
+        off += n
+        if (filled === frameBytes) {
+          frames.push(cur)
+          cur = Buffer.allocUnsafe(frameBytes)
+          filled = 0
+        }
       }
       if (frames.length >= 3) decoder.stdout!.pause()
       wake?.()
@@ -291,7 +303,8 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
     })
     const encoderClosed = new Promise<number | null>((res) => encoder.on('close', (c) => res(c)))
 
-    // Keep two frames in flight so the copy into the renderer overlaps with rendering/readback of the previous one.
+    // Keep frames in flight so copying into the renderer, rendering and the GPU readback of earlier frames overlap.
+    const MAX_IN_FLIGHT = 3
     const renderer = new FramePipe(port1)
     const inFlight: Promise<Msg>[] = []
     let sent = 0
@@ -304,7 +317,7 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
       const rendered = await inFlight.shift()!
       waitRender += Date.now() - a
       const data = rendered.data as Uint8Array
-      if (data.byteLength !== outW * outH * 4) throw new Error('Renderer returned a frame of the wrong size')
+      if (data.byteLength !== outBytes) throw new Error('Renderer returned a frame of the wrong size')
       const b = Date.now()
       const ok = encoder.stdin!.write(Buffer.from(data.buffer, data.byteOffset, data.byteLength))
       if (!ok) await new Promise<void>((r) => encoder.stdin!.once('drain', () => r()))
@@ -332,7 +345,7 @@ async function renderPipeline(req: ExportRequest, src: MediaInfo, enc: Parameter
         job.catch(() => undefined) // surfaced when awaited; avoid unhandled rejections if we bail out early
         inFlight.push(job)
         sent++
-        if (inFlight.length >= 2) await writeOne()
+        if (inFlight.length >= MAX_IN_FLIGHT) await writeOne()
       }
       while (inFlight.length) await writeOne()
     } finally {
@@ -384,7 +397,8 @@ type Msg = { type: string; [k: string]: unknown }
 class FramePipe {
   private pending = new Map<number, { resolve: (m: Msg) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
   private onMsg = (e: Electron.MessageEvent) => {
-    const d = e.data as Msg
+    const d = e.data as Msg | null
+    if (!d || typeof d !== 'object') return // never crash the main process on an unexpected message
     if (d.type === 'error') {
       // the renderer handles frames in order, so an error belongs to the oldest pending frame; fail them all
       for (const p of this.pending.values()) {
@@ -430,7 +444,8 @@ function sendAndWait(port: MessagePortMain, msg: Msg, expect: string, timeoutMs:
       reject(new Error(`Renderer timed out waiting for ${expect}`))
     }, timeoutMs)
     const onMsg = (e: Electron.MessageEvent) => {
-      const d = e.data as Msg
+      const d = e.data as Msg | null
+      if (!d || typeof d !== 'object') return // never crash the main process on an unexpected message
       if (d.type === 'error') {
         clearTimeout(timer)
         port.removeListener('message', onMsg)

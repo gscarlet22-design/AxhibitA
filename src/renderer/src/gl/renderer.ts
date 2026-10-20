@@ -1,6 +1,8 @@
 import { DEG } from '@shared/dewarp/project'
 import type { Box, Calibration, NormalState, PtzState, RedactStyle, ViewState } from '@shared/types'
+import type { YuvMatrix } from '@shared/color'
 import { FRAG, MAX_BOXES, VERT } from './shaders'
+import { YuvUpload } from './yuv'
 
 export interface Viewport {
   x: number
@@ -53,6 +55,8 @@ export class GLRenderer {
   private texW = 0
   private texH = 0
   private mipsDirty = true
+  private yuv: YuvUpload | null = null
+  private texAllocated = false
 
   constructor(readonly canvas: HTMLCanvasElement | OffscreenCanvas, opts: { preserveDrawingBuffer?: boolean } = {}) {
     const gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: !!opts.preserveDrawingBuffer, alpha: false }) as WebGL2RenderingContext | null
@@ -91,6 +95,7 @@ export class GLRenderer {
     const p = gl.createProgram()!
     gl.attachShader(p, sh(gl.VERTEX_SHADER, vs))
     gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs))
+    gl.bindAttribLocation(p, 0, 'aPos') // shared with the export helper programs (yuv.ts)
     gl.linkProgram(p)
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('Shader link failed: ' + gl.getProgramInfoLog(p))
     return p
@@ -111,6 +116,24 @@ export class GLRenderer {
     const gl = this.gl
     gl.bindTexture(gl.TEXTURE_2D, this.tex)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
+    this.texW = w
+    this.texH = h
+    this.mipsDirty = true
+  }
+
+  /**
+   * Upload a planar YUV 4:2:0 frame (export pipeline) and convert it to RGB on the GPU into the source
+   * texture, so the main shader samples it exactly like an RGBA upload.
+   */
+  uploadYuv420(data: Uint8Array, w: number, h: number, fullRange: boolean, matrix: YuvMatrix): void {
+    const gl = this.gl
+    this.yuv ??= new YuvUpload(gl)
+    if (this.texW !== w || this.texH !== h || !this.texAllocated) {
+      gl.bindTexture(gl.TEXTURE_2D, this.tex)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+      this.texAllocated = true
+    }
+    this.yuv.convert(data, w, h, this.tex, fullRange, matrix)
     this.texW = w
     this.texH = h
     this.mipsDirty = true

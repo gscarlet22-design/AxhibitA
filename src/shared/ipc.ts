@@ -116,6 +116,8 @@ export interface RenderSpec {
   decH: number
   outW: number
   outH: number
+  /** frame formats on the way in (from FFmpeg) and out (to FFmpeg); YUV is 2.7× smaller than RGBA */
+  frames: { in: 'rgba' | 'yuv420p' | 'yuvj420p'; out: 'rgba' | 'yuv420p'; fullRange: boolean; matrix: 'bt709' | 'bt601' }
   fps: number
   inSec: number
   view: ExportView

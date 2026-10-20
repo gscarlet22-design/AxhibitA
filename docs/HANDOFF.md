@@ -258,6 +258,32 @@ Garrett's feedback on 1.1.0: a box drawn partway through showed from the start o
     - outside mode keeps the boxed square fully visible, blacks out the rest, and records `mode: outside`.
 - [ ] **Watch:** in one run the moving-square section stalled (zoom-path playback stuck at t = 0, then the app window closed); the rerun passed with 41/41. Along with the earlier one-off follow failure, this suggests something intermittent around that fixture (it's MPEG-4, so it plays through a playable copy). If it repeats, capture `[pageerror]` and the main-process log.
 
+## 3d. Faster exports (done 2026-10-20)
+
+Garrett noticed exports after edits felt slow. Measured: 10 s of 4K with one blur box took 40–74 s, though FFmpeg decodes it in about 3 s. The time went into moving 33 MB RGBA frames between processes, plus two RGB conversions in FFmpeg.
+
+- [x] **What changed:**
+  - Planar YUV 4:2:0 both ways, with the colour conversions on the GPU (`gl/yuv.ts`, colour math in `shared/color.ts` with tests).
+  - Single-copy frame assembly in main.
+  - Asynchronous GPU readback (pixel-pack buffer + fence).
+  - Three frames in flight.
+  - Details are in EXPORT_AND_MANIFEST → Pipelines.
+- [x] **Measured on Garrett's laptop** (NVENC, `test-output/bench-suite.ps1`, not committed):
+
+  | Export | Before | After |
+  |---|---|---|
+  | 4K original + blur, 10 s | 40.1 s | **19.8 s** |
+  | 4K → 1080p + blur, 10 s | 17.2 s | **8.1 s** |
+  | Fisheye PTZ 1080p, 5 s | 7.4 s | **4.0 s** |
+
+- [x] **Colour:** PSNR against FFmpeg's direct conversion of the source is equal or better than the old RGBA path (44.8 vs 44.2 dB on 4K, 46.9 vs 46.5 dB on fisheye). The burned-in text is identical.
+- [x] **No GPU** (`AXHIBIT_DISABLE_GPU=1`, dev builds only: WebGL on SwiftShader):
+  - The output matches the GPU path within 0.1 dB.
+  - Speed is about the same as the old path: 4K 194 s vs 187 s; 1080p 65 s vs 72 s; fisheye 26 s vs 30 s. Software rendering is simply slow at 4K.
+  - If customers on VMs/RDP export a lot, a CPU-friendly path (FFmpeg doing simple redactions itself) would be the next lever.
+- [x] **Bug found on the way:** an empty message on the export port crashed the main process (a "JavaScript error in the main process" dialog). Both port handlers now ignore malformed messages, and the renderer no longer transfers buffers, which `MessagePortMain` can't receive.
+- [ ] **Still slow:** at 4K the remaining cost is Electron copying 12 MB per frame each way between the main and render processes. Going further would need shared memory (a native addon); not worth it yet.
+
 ## 4. UI refresh (done 2026-10-20, version 1.1.0)
 
 Garrett picked direction A ("Studio") from the design mockups: same dark palette and amber accent, softer and more modern.

@@ -98,6 +98,8 @@ export interface VideoStreamInfo {
   fps: number
   pixFmt?: string
   colorSpace?: string
+  /** 'pc' (full) or 'tv' (limited), when the stream says */
+  colorRange?: string
 }
 
 export interface AudioStreamInfo {

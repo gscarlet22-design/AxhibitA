@@ -19,6 +19,8 @@ registerSchemePrivileges()
 app.setName(APP_NAME)
 // Tests run against a throwaway profile so they neither share the user's settings nor hit the single-instance lock.
 if (!app.isPackaged && process.env.AXHIBIT_USER_DATA) app.setPath('userData', process.env.AXHIBIT_USER_DATA)
+// Tests: run as a machine without a usable GPU would (WebGL on SwiftShader, the software fallback).
+if (!app.isPackaged && process.env.AXHIBIT_DISABLE_GPU === '1') app.disableHardwareAcceleration()
 // WebGL must work on blocklisted GPUs, Remote Desktop sessions and VMs: allow the software (SwiftShader) fallback.
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
 app.commandLine.appendSwitch('enable-unsafe-swiftshader')

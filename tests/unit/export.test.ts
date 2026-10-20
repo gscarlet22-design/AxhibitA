@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fastTrimArgs, keyframeAtOrBefore, parseKeyframes, parseProgress, remuxArgsFor, renderDecodeArgs, renderEncodeArgs, thumbnailArgs, thumbnailTime } from '@shared/ffmpeg/args'
+import { canPackYuvOutput, fastTrimArgs, frameBytes, keyframeAtOrBefore, parseKeyframes, parseProgress, remuxArgsFor, renderDecodeArgs, renderEncodeArgs, thumbnailArgs, thumbnailTime, yuvTransportFor } from '@shared/ffmpeg/args'
 import { encoderOptions, parseEncoderList } from '@shared/ffmpeg/encoders'
 import { sanitizeStem, uniqueStem } from '@shared/files'
 import { buildManifest } from '@shared/manifest/build'
@@ -22,6 +22,29 @@ describe('ffmpeg args', () => {
     const a = renderDecodeArgs({ src: 's', inSec: 2, durSec: 5, fps: 15 })
     expect(a.join(' ')).toContain('fps=15,format=rgba')
     expect(a.at(-1)).toBe('pipe:1')
+  })
+  it('decodes planar YUV in the source range, and encodes GPU-made BT.709 YUV without reconversion', () => {
+    const d = renderDecodeArgs({ src: 's', inSec: 0, durSec: 1, fps: 15, pixFmt: 'yuvj420p' })
+    expect(d.join(' ')).toContain('format=yuvj420p')
+    expect(d[d.indexOf('-pix_fmt') + 1]).toBe('yuvj420p')
+    const e = renderEncodeArgs({ src: 's', out: 'o.mp4', inSec: 0, durSec: 1, w: 1920, h: 1080, fps: 15, enc: 'h264_nvenc', includeAudio: false, inPixFmt: 'yuv420p' })
+    const input = e.slice(0, e.indexOf('pipe:0'))
+    expect(input).toContain('yuv420p')
+    expect(input.join(' ')).toContain('-color_range tv -colorspace bt709')
+  })
+  it('keeps each source in its own color range and matrix', () => {
+    expect(yuvTransportFor({ pixFmt: 'yuvj420p', colorRange: 'pc', colorSpace: 'bt709', height: 2880 })).toEqual({ pixFmt: 'yuvj420p', fullRange: true, matrix: 'bt709' })
+    expect(yuvTransportFor({ pixFmt: 'yuv420p', colorRange: 'tv', colorSpace: 'bt709', height: 2160 })).toEqual({ pixFmt: 'yuv420p', fullRange: false, matrix: 'bt709' })
+    expect(yuvTransportFor({ pixFmt: 'yuvj420p', height: 1080 }).fullRange).toBe(true)
+    expect(yuvTransportFor({ pixFmt: 'yuv420p', colorSpace: 'smpte170m', height: 1080 }).matrix).toBe('bt601')
+    expect(yuvTransportFor({ pixFmt: 'yuv420p', height: 480 }).matrix).toBe('bt601')
+  })
+  it('sizes frames and knows when output can be packed as YUV', () => {
+    expect(frameBytes('rgba', 3840, 2160)).toBe(33177600)
+    expect(frameBytes('yuv420p', 3840, 2160)).toBe(12441600)
+    expect(canPackYuvOutput(1920, 1080)).toBe(true)
+    expect(canPackYuvOutput(1366, 768)).toBe(false)
+    expect(canPackYuvOutput(1920, 1082)).toBe(false)
   })
   it('encodes from stdin with optional audio from the original', () => {
     const a = renderEncodeArgs({ src: 's', out: 'o.mp4', inSec: 1, durSec: 2, w: 1920, h: 1080, fps: 15, enc: 'h264_mf', includeAudio: true })

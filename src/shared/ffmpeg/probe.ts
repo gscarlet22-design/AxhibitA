@@ -22,6 +22,7 @@ interface ProbeStream {
   r_frame_rate?: string
   pix_fmt?: string
   color_space?: string
+  color_range?: string
   channels?: number
   sample_rate?: string
   tags?: Record<string, string>
@@ -95,7 +96,8 @@ export function deriveRecordingMeta(
         height: vs.height ?? 0,
         fps: parseRate(vs.avg_frame_rate) || parseRate(vs.r_frame_rate),
         pixFmt: vs.pix_fmt,
-        colorSpace: vs.color_space
+        colorSpace: vs.color_space,
+        colorRange: vs.color_range
       }
     : undefined
   const audio: AudioStreamInfo | undefined = as

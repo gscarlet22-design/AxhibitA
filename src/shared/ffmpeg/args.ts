@@ -104,16 +104,54 @@ export interface DecodeOpts {
   fps: number
   /** optional downscale before sending frames (when output is much smaller than source) */
   scaleTo?: { w: number; h: number }
+  /** frame format on stdout (default rgba) */
+  pixFmt?: FramePixFmt
 }
 
-/** Decoder for the render pipeline: constant-rate RGBA frames on stdout. */
+/** Raw frame formats between FFmpeg and the export renderer. */
+export type FramePixFmt = 'rgba' | 'yuv420p' | 'yuvj420p'
+
+export interface YuvTransport {
+  /** planar 4:2:0 as FFmpeg should emit it: the source's own range, so no range conversion happens */
+  pixFmt: 'yuv420p' | 'yuvj420p'
+  fullRange: boolean
+  matrix: 'bt709' | 'bt601'
+}
+
+/**
+ * How to carry a source's frames as YUV 4:2:0 without changing them: keep the stream's range (full 'pc' /
+ * yuvj*, as Axis cameras send, or limited), and the matrix the browser uses to show it (BT.601 when the
+ * stream says so or for SD, BT.709 otherwise).
+ */
+export function yuvTransportFor(v: { pixFmt?: string; colorRange?: string; colorSpace?: string; height: number }): YuvTransport {
+  const fullRange = v.colorRange === 'pc' || (v.colorRange !== 'tv' && !!v.pixFmt?.startsWith('yuvj'))
+  const cs = v.colorSpace ?? ''
+  const matrix = cs === 'bt470bg' || cs === 'smpte170m' || ((cs === '' || cs === 'unknown') && v.height < 720) ? 'bt601' : 'bt709'
+  return { pixFmt: fullRange ? 'yuvj420p' : 'yuv420p', fullRange, matrix }
+}
+
+/** Bytes in one raw frame. */
+export function frameBytes(pixFmt: FramePixFmt, w: number, h: number): number {
+  return pixFmt === 'rgba' ? w * h * 4 : (w * h * 3) / 2
+}
+
+/**
+ * Whether rendered frames can come back as packed YUV 4:2:0: the GPU packs 4 luma samples per RGBA texel
+ * and two chroma rows per texture row, which needs width % 8 == 0 and height % 4 == 0.
+ */
+export function canPackYuvOutput(w: number, h: number): boolean {
+  return w % 8 === 0 && h % 4 === 0
+}
+
+/** Decoder for the render pipeline: constant-rate raw frames (RGBA or planar YUV 4:2:0) on stdout. */
 export function renderDecodeArgs(o: DecodeOpts): string[] {
+  const fmt = o.pixFmt ?? 'rgba'
   const vf = [`fps=${num(o.fps)}`]
   if (o.scaleTo) vf.push(`scale=${o.scaleTo.w}:${o.scaleTo.h}:flags=bicubic`)
-  vf.push('format=rgba')
+  vf.push(`format=${fmt}`)
   return [
     ...BASE, '-ss', num(o.inSec), '-i', o.src, '-t', num(o.durSec),
-    '-map', '0:v:0', '-vf', vf.join(','), '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'
+    '-map', '0:v:0', '-vf', vf.join(','), '-f', 'rawvideo', '-pix_fmt', fmt, 'pipe:1'
   ]
 }
 
@@ -127,13 +165,21 @@ export interface EncodeOpts {
   fps: number
   enc: H264Encoder
   includeAudio: boolean
+  /**
+   * frames on stdin: rgba (converted by FFmpeg), or yuv420p already in BT.709 limited range (the GPU
+   * converts; matches the output tags so FFmpeg passes it straight to the encoder). Default rgba.
+   */
+  inPixFmt?: 'rgba' | 'yuv420p'
 }
 
-/** Encoder for the render pipeline: RGBA frames on stdin (+ audio from the original source). */
+/** Encoder for the render pipeline: raw frames on stdin (+ audio from the original source). */
 export function renderEncodeArgs(o: EncodeOpts): string[] {
+  const inFmt = o.inPixFmt ?? 'rgba'
   return [
     ...BASE, '-n',
-    '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${o.w}x${o.h}`, '-r', num(o.fps), '-i', 'pipe:0',
+    '-f', 'rawvideo', '-pix_fmt', inFmt,
+    ...(inFmt === 'yuv420p' ? ['-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'] : []),
+    '-s', `${o.w}x${o.h}`, '-r', num(o.fps), '-i', 'pipe:0',
     ...(o.includeAudio ? ['-ss', num(o.inSec), '-t', num(o.durSec), '-i', o.src, '-map', '1:a:0?', '-c:a', 'aac', '-b:a', '128k'] : []),
     '-map', '0:v:0', '-c:v', o.enc, ...encoderOptions(o.enc, o.w, o.h, o.fps),
     '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',
