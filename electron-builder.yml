@@ -1,0 +1,27 @@
+appId: com.axhibit.player
+productName: Axhibit A
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: resources/bin
+    to: bin
+    filter: ["*.exe", "LICENSES/**"]
+  # bundled UI font (SIL Open Font License); shipped next to the other license texts
+  - from: node_modules/@fontsource-variable/inter/LICENSE
+    to: bin/LICENSES/Inter-OFL.txt
+asar: true
+win:
+  target:
+    - target: portable
+      arch: [x64]
+    # same app, unpacked: starts instantly (the portable exe unpacks ~140 MB to %TEMP% on every launch)
+    - target: zip
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: AxhibitA-${version}-win-x64.${ext}
+portable:
+  artifactName: AxhibitA-${version}-portable.exe

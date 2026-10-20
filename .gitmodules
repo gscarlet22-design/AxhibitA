@@ -1,0 +1,3 @@
+[submodule "native/signed-video-framework"]
+	path = native/signed-video-framework
+	url = https://github.com/AxisCommunications/signed-video-framework.git

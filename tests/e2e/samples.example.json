@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy to samples.local.json (git-ignored) and use file names from your AXHIBIT_SAMPLES folder of real ACS Pro exports.",
+  "unsignedAsf": "Office Fixed 2026-10-19_15_45_45_102.asf",
+  "uhdMp4": "Side Entrance 2026-10-19_15_30_59_738.mp4",
+  "fisheyeMkv": "Lobby Fisheye 2026-10-19_10_34_35_604.mkv",
+  "gridPrefix": "P3738",
+  "minRecordings": 10,
+  "scratchFolder": "_Axhibit build"
+}

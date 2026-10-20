@@ -1,0 +1,23 @@
+node_modules/
+out/
+dist/
+samples/
+resources/bin/*.exe
+*.log
+resources/bin/*
+!resources/bin/.gitkeep
+# only synthetic signed-video fixtures (scripts/make-signed-fixtures.sh) are committed
+tests/fixtures/media/*
+!tests/fixtures/media/signed.mkv
+!tests/fixtures/media/tampered.mkv
+# real footage and local sample names never leave this machine
+tests/fixtures/private/
+tests/e2e/samples.local.json
+.cache/
+.claude/
+native/win/
+native/signed-video-framework/build-*
+native/sv-tool/sv-validate
+native/sv-tool/sv-sign
+native/sv-tool/*.pem
+test-output/
